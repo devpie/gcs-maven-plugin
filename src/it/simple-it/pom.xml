@@ -62,7 +62,7 @@
                     <files-filter-base-path>${project.build.directory}/artifacts</files-filter-base-path>
                     <files-filter>*.jar</files-filter>
                     <gcs-application-name>my-application-name</gcs-application-name>
-                    <bucket-name>my.bucket.net</bucket-name>
+                    <bucket-name>my-bucket</bucket-name>
                     <bucket-base-path>test</bucket-base-path>
                     <share-public>true</share-public>
                 </configuration>
