@@ -9,7 +9,8 @@ import com.google.api.client.googleapis.auth.oauth2.GoogleCredential
 import com.google.api.client.http.FileContent
 import com.google.api.services.storage.Storage
 import com.google.api.services.storage.model.{Bucket, ObjectAccessControl, StorageObject}
-import de.janitza.maven.gcs.api.{IGCSConfig, IGoogleCloudStorageService}
+import de.janitza.maven.gcs.api.config.GCSConfig
+import de.janitza.maven.gcs.api.{Error, IGoogleCloudStorageService, Result, Success}
 import de.janitza.maven.gcs.impl.util.{HttpUtil, StoragePath}
 import org.apache.maven.plugin.logging.Log
 
@@ -23,7 +24,7 @@ object GoogleCloudStorageService {
 }
 
 class GoogleCloudStorageService @throws[IOException]
-(val gcsConfig: IGCSConfig, val log: Log)
+(val gcsConfig: GCSConfig, val log: Log)
   extends IGoogleCloudStorageService {
 
   import GoogleCloudStorageService._
@@ -51,14 +52,19 @@ class GoogleCloudStorageService @throws[IOException]
       .build
   }
 
-  @throws[IOException]
-  override def uploadFile(file: Path, relativePathInStorage: Option[String], sharePublic: Boolean) {
-    val fileName = file.getFileName.toString
-    val storagePath = getStoragePath(relativePathInStorage, fileName)
-    val storageObject: StorageObject = createStorageObject(storagePath, file, sharePublic, m_Bucket)
+  override def uploadFile(file: Path, relativePathInStorage: Option[String], sharePublic: Boolean): Result[Unit] = {
+    val storagePath = getStoragePath(relativePathInStorage, file.getFileName.toString)
+    val storageObjectResult = createStorageObject(storagePath, file, sharePublic, m_Bucket)
+    storageObjectResult match {
+      case Success(storageObject) => Success(uploadFile(file, storagePath, storageObject))
+      case e: Error => e
+    }
+  }
+
+  def uploadFile(file: Path, storagePath: String, storageObject: StorageObject): Unit = {
     logFileUploading(file, storagePath)
-    val t1: Instant = Instant.now
-    retry(file, storageObject, 10)
+    val t1 = Instant.now
+    insertWithRetry(file, storageObject, 10)
     logFileUploaded(file, storagePath, t1)
   }
 
@@ -79,27 +85,30 @@ class GoogleCloudStorageService @throws[IOException]
     insertion
   }
 
-  @throws[IOException]
-  private def retry(file: Path, storageObject: StorageObject, maxRetryCount: Int) {
-    val exception: IOException = new IOException("Retry failed!")
-    var i = 0
-    var done = false
-    while (!done && i < maxRetryCount)
+  private def insertWithRetry(file: Path, storageObject: StorageObject, maxRetryCount: Int): Result[Unit] = {
+    val insertion: Insertion = Insertion(file, storageObject)
+    Stream.from(1).take(maxRetryCount)
+      .map(_ => insertion.insert)
+      .collectFirst({case s: Success[Unit] => s})
+      .getOrElse(Error(s"The upload has been retried $maxRetryCount times without success!"))
+  }
+
+  private case class Insertion(file: Path, storageObject: StorageObject) {
+    def insert: Result[Unit] = {
       try {
         createInsert(file, storageObject).execute
-        done = true
+        Success()
       } catch {
         case e: IOException => {
-          exception.addSuppressed(e)
-          i += 1
-          if (i < maxRetryCount)
-            log.info(
-              "Upload was interrupted. Retrying the upload! Resuming is currently not supported by the google lib!")
-          else
-            done = true
+          log.info(
+            "Upload was interrupted. Retrying the upload! Resuming is currently not supported by the google lib!")
+          Error(
+            "Upload was interrupted. Retrying the upload! Resuming is currently not supported by the google lib!",
+            Some(e)
+          )
         }
       }
-    if (i >= maxRetryCount) throw exception
+    }
   }
 
   private def logBucketInfo(bucketName: String, bucket: Bucket) {
@@ -121,14 +130,24 @@ class GoogleCloudStorageService @throws[IOException]
       case rp: String => StoragePath.join(rp, fileName)
     }) getOrElse fileName
 
-  @throws[IOException]
-  private def createStorageObject(storagePath: String, file: Path, sharePublic: Boolean, bucket: Bucket) = {
-    val fileName: String = file.getFileName.toString
+  private def createStorageObject(storagePath: String, file: Path, sharePublic: Boolean, bucket: Bucket): Result[StorageObject] = {
+    val fileName = file.getFileName.toString
+    HttpUtil.getMimeType(file) match {
+      case Success(mimeType) => size(file) match {
+        case Success(fileSize) =>
+          Success(createStorageObject(storagePath, fileName, fileSize, sharePublic, bucket, mimeType))
+        case Error(message, exception) => Error(message, exception)
+      }
+      case Error(message, exception) => Error(message, exception)
+    }
+  }
+
+  private def createStorageObject(storagePath: String, fileName: String, fileSize: BigInteger, sharePublic: Boolean, bucket: Bucket, mimeType: String): StorageObject = {
     val storageObject = new StorageObject()
       .setName(storagePath)
       .setContentDisposition(HttpUtil.getContentDisposition(fileName))
-      .setContentType(HttpUtil.getMimeType(file))
-      .setSize(size(file))
+      .setContentType(mimeType)
+      .setSize(fileSize)
     if (sharePublic) {
       storageObject.setAcl(addPublicReadAccess(getDefaultObjectAcl(bucket)).asJava)
     }
@@ -136,7 +155,13 @@ class GoogleCloudStorageService @throws[IOException]
   }
 
   @throws[IOException]
-  private def size(file: Path): BigInteger = BigInteger.valueOf(Files.size(file))
+  private def size(file: Path): Result[BigInteger] = {
+    try {
+      Success(BigInteger.valueOf(Files.size(file)))
+    } catch {
+      case e: IOException => Error("Couldn't determine size of file to be uploaded!", Some(e))
+    }
+  }
 
   private def addPublicReadAccess(defaultAcl: Seq[ObjectAccessControl]): Seq[ObjectAccessControl] = {
     val alreadyShared = defaultAcl.toStream.map(_.getEntity).exists(USER_ALL_USERS.equals(_))

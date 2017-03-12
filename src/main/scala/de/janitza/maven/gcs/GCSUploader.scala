@@ -1,11 +1,11 @@
 package de.janitza.maven.gcs
 
-import java.io.{File, IOException}
+import java.io.File
 import java.nio.file.{Files, Path, Paths}
 
-import de.janitza.maven.gcs.api.{BuildException, IGCSConfig, IGoogleCloudStorageService}
+import de.janitza.maven.gcs.api.{Error, IGoogleCloudStorageService, Result, Success}
 import de.janitza.maven.gcs.impl.GoogleCloudStorageService
-import de.janitza.maven.gcs.impl.config.GCSConfig
+import de.janitza.maven.gcs.impl.config.GCSConfigBuilder
 import org.apache.maven.plugin.{AbstractMojo, MojoExecutionException}
 import org.apache.maven.plugins.annotations.{LifecyclePhase, Mojo, Parameter}
 
@@ -106,38 +106,40 @@ class GCSUploader extends AbstractMojo {
   @throws[MojoExecutionException]
   def execute() {
     try {
-      val service = getGoogleCloudStorageService
       val pomFiles = new collection.mutable.ArrayBuffer[Path]
       Files.walkFileTree(
         Paths.get(m_FilesFilterBasePath),
         new FileFinder(m_FilesFilter, getLog, path => pomFiles += path)
       )
-      for (path <- pomFiles) {
-        uploadFile(service, path)
+
+      val result: Option[Result[Unit]] = getGoogleCloudStorageService match {
+        case Success(service) =>
+          pomFiles.toStream.map(uploadFile(service, _)).collectFirst({ case e: Error => e })
+        case e: Error => Some(e)
+      }
+
+      result match {
+        case Some(Error(message, Some(exception))) => throw new MojoExecutionException(message, exception)
+        case Some(Error(message, None)) => throw new MojoExecutionException(message)
+        case None => {}
       }
     } catch {
-      case e: BuildException => throw new MojoExecutionException("Config not buildable!", e)
-      case e: IOException =>
+      case e: Any =>
         throw new MojoExecutionException("Scanning the files and uploading them resulted in an error!", e)
     }
   }
 
-  @throws[BuildException]
-  @throws[IOException]
-  private def getGoogleCloudStorageService: IGoogleCloudStorageService =
-    new GoogleCloudStorageService(getGCSConfig, getLog)
+  private def getGoogleCloudStorageService: Result[IGoogleCloudStorageService] =
+    getGCSConfig match {
+      case Success(gcsConfig) => Success(new GoogleCloudStorageService(gcsConfig, getLog))
+      case e: Error => e
+    }
 
-  @throws[BuildException]
-  private def getGCSConfig: IGCSConfig =
-    new GCSConfig.Builder()
-      .setGCSApplicationName(m_ApplicationName)
-      .setBucketName(m_BucketName)
-      .setJsonSecretsFile(m_JsonSecretsFile)
-      .build
 
-  @throws[IOException]
-  private def uploadFile(service: IGoogleCloudStorageService, path: Path) {
+  private def getGCSConfig = GCSConfigBuilder(m_JsonSecretsFile, m_ApplicationName, m_BucketName).build
+
+  private def uploadFile(service: IGoogleCloudStorageService, path: Path): Result[Unit] =
     service.uploadFile(path, Option(m_BaseBucketPath), m_SharePublic)
-  }
+
 }
 

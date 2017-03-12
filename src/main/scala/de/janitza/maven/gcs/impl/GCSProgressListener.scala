@@ -9,8 +9,9 @@ import java.time.LocalDateTime
 import com.google.api.client.googleapis.media.MediaHttpUploader.UploadState
 
 class GCSProgressListener(val m_FileSize: Long, val m_Log: Log) extends MediaHttpUploaderProgressListener {
+
   @throws[IOException]
-  def progressChanged(uploader: MediaHttpUploader) {
+  override def progressChanged(uploader: MediaHttpUploader) {
     val percentage = Math.floor(uploader.getProgress * 100).round
     val numBytesUploaded = uploader.getNumBytesUploaded / 1024 / 1024
     val fileSizeInMB = m_FileSize / 1024 / 1024
@@ -29,4 +30,5 @@ class GCSProgressListener(val m_FileSize: Long, val m_Log: Log) extends MediaHtt
           s"$now ::: Initiation not started yet. Uploaded $numBytesUploaded MB of $fileSizeInMB MB ::: $percentage%")
     }
   }
+
 }

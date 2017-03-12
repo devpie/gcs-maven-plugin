@@ -3,11 +3,21 @@ package de.janitza.maven.gcs.impl.util
 import java.io.IOException
 import java.nio.file.{Files, Path}
 
+import de.janitza.maven.gcs.api.{Error, Result, Success}
+
+/**
+  * Created by jan on 12.03.17.
+  */
+
 object HttpUtil {
   def getContentDisposition(filename: String) = s"""attachment; filename="$filename""""
 
-  @throws[IOException]
-  def getMimeType(path: Path) = Files.probeContentType(path)
+  def getMimeType(path: Path): Result[String] =
+    try {
+      Success(Files.probeContentType(path))
+    } catch {
+      case e: IOException => Error(s"Getting the mime type of $path failed!", Some(e))
+    }
 }
 
 object StoragePath {
