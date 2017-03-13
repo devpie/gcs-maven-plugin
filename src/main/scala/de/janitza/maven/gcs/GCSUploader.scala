@@ -1,6 +1,6 @@
 package de.janitza.maven.gcs
 
-import java.io.File
+import java.io.{File, IOException}
 import java.nio.file.{Files, Path, Paths}
 
 import de.janitza.maven.gcs.api.{Error, IGoogleCloudStorageService, Result, Success}
@@ -121,6 +121,7 @@ class GCSUploader extends AbstractMojo {
       result match {
         case Some(Error(message, Some(exception))) => throw new MojoExecutionException(message, exception)
         case Some(Error(message, None)) => throw new MojoExecutionException(message)
+        case Some(Success(_)) => {}
         case None => {}
       }
     } catch {
@@ -129,6 +130,7 @@ class GCSUploader extends AbstractMojo {
     }
   }
 
+  @throws[IOException]
   private def getGoogleCloudStorageService: Result[IGoogleCloudStorageService] =
     getGCSConfig match {
       case Success(gcsConfig) => Success(new GoogleCloudStorageService(gcsConfig, getLog))

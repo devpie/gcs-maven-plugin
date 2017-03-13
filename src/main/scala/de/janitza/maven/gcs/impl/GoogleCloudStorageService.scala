@@ -21,6 +21,7 @@ object GoogleCloudStorageService {
   val ROLE_READER = "READER"
   val USER_ALL_USERS = "allUsers"
   val PROJECTION = "full"
+  val MAX_RETRY_ATTEMPTS = 10
 }
 
 class GoogleCloudStorageService @throws[IOException]
@@ -64,7 +65,7 @@ class GoogleCloudStorageService @throws[IOException]
   def uploadFile(file: Path, storagePath: String, storageObject: StorageObject): Unit = {
     logFileUploading(file, storagePath)
     val t1 = Instant.now
-    insertWithRetry(file, storageObject, 10)
+    insertWithRetry(file, storageObject, MAX_RETRY_ATTEMPTS)
     logFileUploaded(file, storagePath, t1)
   }
 
@@ -86,26 +87,26 @@ class GoogleCloudStorageService @throws[IOException]
   }
 
   private def insertWithRetry(file: Path, storageObject: StorageObject, maxRetryCount: Int): Result[Unit] = {
-    val insertion: Insertion = Insertion(file, storageObject)
-    Stream.from(1).take(maxRetryCount)
-      .map(_ => insertion.insert)
-      .collectFirst({case s: Success[Unit] => s})
-      .getOrElse(Error(s"The upload has been retried $maxRetryCount times without success!"))
+    val errorResults = Stream.from(1).take(maxRetryCount)
+      .map(Insertion(file, storageObject).execute)
+      .takeWhile(result => result.isInstanceOf[Error]).toSeq
+    if (errorResults.nonEmpty && errorResults.size < maxRetryCount) {
+      errorResults.last
+    } else {
+      Success()
+    }
   }
 
   private case class Insertion(file: Path, storageObject: StorageObject) {
-    def insert: Result[Unit] = {
+    def execute(counter: Int): Result[Unit] = {
       try {
         createInsert(file, storageObject).execute
         Success()
       } catch {
         case e: IOException => {
-          log.info(
-            "Upload was interrupted. Retrying the upload! Resuming is currently not supported by the google lib!")
-          Error(
-            "Upload was interrupted. Retrying the upload! Resuming is currently not supported by the google lib!",
-            Some(e)
-          )
+          val errorMessage: String = "Upload was interrupted."
+          log.info(errorMessage)
+          Error(errorMessage, Some(e))
         }
       }
     }

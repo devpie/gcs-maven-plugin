@@ -13,12 +13,10 @@ class FileFinder(val globPattern: String, val m_log: Log, val pathAction: (Path)
   private val m_pathMatcher = FileSystems.getDefault.getPathMatcher("glob:" + globPattern)
 
   private[gcs] def find(file: Path) {
-    Option(file.getFileName).foreach((name) =>
-      if(m_pathMatcher.matches(name)) {
-        m_log.info("Found file: " + file)
-        pathAction(file)
-      }
-    )
+    Option(file.getFileName).filter(m_pathMatcher.matches).foreach(name => {
+      m_log.info("Found file: " + file)
+      pathAction(file)
+    })
   }
 
   override def visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult = {

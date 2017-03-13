@@ -36,7 +36,7 @@ object ServiceAccountCredentials {
   def load(path: String): Result[ServiceAccountCredentials] = {
     JsonServiceAccountCredentials.load(path) match {
       case JsSuccess(value: JsonServiceAccountCredentials, _) => create(value)
-      case e: Error => e
+      case e: JsError => Error(e.toString)
     }
   }
 
