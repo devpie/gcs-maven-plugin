@@ -21,7 +21,7 @@ object GoogleCloudStorageService {
   val ROLE_READER = "READER"
   val USER_ALL_USERS = "allUsers"
   val PROJECTION = "full"
-  val MAX_RETRY_ATTEMPTS = 10
+  val MAX_ATTEMPTS = 10
 }
 
 class GoogleCloudStorageService @throws[IOException]
@@ -57,16 +57,20 @@ class GoogleCloudStorageService @throws[IOException]
     val storagePath = getStoragePath(relativePathInStorage, file.getFileName.toString)
     val storageObjectResult = createStorageObject(storagePath, file, sharePublic, m_Bucket)
     storageObjectResult match {
-      case Success(storageObject) => Success(uploadFile(file, storagePath, storageObject))
+      case Success(storageObject) => uploadFile(file, storagePath, storageObject)
       case e: Error => e
     }
   }
 
-  def uploadFile(file: Path, storagePath: String, storageObject: StorageObject): Unit = {
+  private def uploadFile(file: Path, storagePath: String, storageObject: StorageObject): Result[Unit] = {
     logFileUploading(file, storagePath)
-    val t1 = Instant.now
-    insertWithRetry(file, storageObject, MAX_RETRY_ATTEMPTS)
-    logFileUploaded(file, storagePath, t1)
+    val startedAt = Instant.now
+    val uploadResult = insertWithRetry(file, storageObject, MAX_ATTEMPTS)
+    uploadResult match {
+      case Success(_) => logFileUploaded(file, storagePath, startedAt)
+      case _: Error => ()
+    }
+    uploadResult
   }
 
   @throws[IOException]
@@ -86,22 +90,28 @@ class GoogleCloudStorageService @throws[IOException]
     insertion
   }
 
-  private def insertWithRetry(file: Path, storageObject: StorageObject, maxRetryCount: Int): Result[Unit] = {
-    val errorResults = LazyList.from(1).take(maxRetryCount)
-      .map(Insertion(file, storageObject).execute)
+  /**
+    * Inserts the object, repeating a failed attempt until one is accepted. The LazyList
+    * makes the attempts on demand, so it stops at the first accepted upload.
+    */
+  private def insertWithRetry(file: Path, storageObject: StorageObject, maxAttempts: Int): Result[Unit] = {
+    val insertion = Insertion(file, storageObject)
+    val failedAttempts = LazyList.range(0, maxAttempts)
+      .map(_ => insertion.execute())
       .takeWhile(result => result.isInstanceOf[Error]).toSeq
-    if (errorResults.nonEmpty && errorResults.size < maxRetryCount) {
-      errorResults.last
+    val everyAttemptFailed = failedAttempts.nonEmpty && failedAttempts.size == maxAttempts
+    if (everyAttemptFailed) {
+      failedAttempts.last
     } else {
-      Success()
+      Success(())
     }
   }
 
   private case class Insertion(file: Path, storageObject: StorageObject) {
-    def execute(counter: Int): Result[Unit] = {
+    def execute(): Result[Unit] = {
       try {
         createInsert(file, storageObject).execute
-        Success()
+        Success(())
       } catch {
         case e: IOException => {
           val errorMessage: String = "Upload was interrupted."
@@ -180,4 +190,3 @@ class GoogleCloudStorageService @throws[IOException]
       _.asScala.toList
     } getOrElse Seq()
 }
-

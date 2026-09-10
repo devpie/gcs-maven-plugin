@@ -9,6 +9,8 @@ import de.janitza.maven.gcs.impl.config.GCSConfigBuilder
 import org.apache.maven.plugin.{AbstractMojo, MojoExecutionException}
 import org.apache.maven.plugins.annotations.{LifecyclePhase, Mojo, Parameter}
 
+import scala.util.control.NonFatal
+
 /**
   * Goal which uploads files into a specified bucket of the Google Cloud Storage
   */
@@ -104,30 +106,55 @@ class GCSUploader extends AbstractMojo {
   private var m_FilesFilterBasePath: String = _
 
   @throws[MojoExecutionException]
-  def execute() {
-    try {
-      val pomFiles = new collection.mutable.ArrayBuffer[Path]
-      Files.walkFileTree(
-        Paths.get(m_FilesFilterBasePath),
-        new FileFinder(m_FilesFilter, getLog, path => pomFiles += path)
-      )
-
-      val result: Option[Result[Unit]] = getGoogleCloudStorageService match {
-        case Success(service) =>
-          pomFiles.to(LazyList).map(uploadFile(service, _)).collectFirst({ case e: Error => e })
-        case e: Error => Some(e)
+  def execute(): Unit = {
+    val failure: Option[Error] =
+      try {
+        val filesToUpload = findFilesToUpload
+        getGoogleCloudStorageService match {
+          case Success(service) => uploadUntilFirstError(service, filesToUpload)
+          case e: Error => Some(e)
+        }
+      } catch {
+        // An exception carrying its own message keeps it; only an unforeseen one gets the
+        // generic wording.
+        case e: MojoExecutionException => throw e
+        case NonFatal(e) =>
+          throw new MojoExecutionException("Scanning the files and uploading them resulted in an error!", e)
       }
+    failure.foreach(failTheBuild)
+  }
 
-      result match {
-        case Some(Error(message, Some(exception))) => throw new MojoExecutionException(message, exception)
-        case Some(Error(message, None)) => throw new MojoExecutionException(message)
-        case Some(Success(_)) => {}
-        case None => {}
-      }
-    } catch {
-      case e: Any =>
-        throw new MojoExecutionException("Scanning the files and uploading them resulted in an error!", e)
-    }
+  private def findFilesToUpload: Seq[Path] = {
+    val foundFiles = new collection.mutable.ArrayBuffer[Path]
+    Files.walkFileTree(
+      filesFilterBasePath,
+      new FileFinder(m_FilesFilter, getLog, path => foundFiles += path)
+    )
+    foundFiles.toSeq
+  }
+
+  /**
+    * The directory the files filter is applied to. files-filter-base-path is optional, so
+    * base-directory is what the plugin falls back to. Maven hands an unset parameter over
+    * as null or as the empty string, depending on how it was declared.
+    */
+  private[gcs] def filesFilterBasePath: Path =
+    Option(m_FilesFilterBasePath).filter(_.trim.nonEmpty).map(Paths.get(_))
+      .orElse(Option(m_BaseDir).map(_.toPath))
+      .getOrElse(throw new MojoExecutionException(
+        "Neither files-filter-base-path nor base-directory is set, so there is no directory to scan."))
+
+  /**
+    * Uploads the files and stops at the first one that fails, so a deploy that is going
+    * wrong does not keep pushing further files into the bucket. The LazyList is what makes
+    * it stop: a strict map would upload every file before collectFirst ever looks.
+    */
+  private[gcs] def uploadUntilFirstError(service: IGoogleCloudStorageService, files: Seq[Path]): Option[Error] =
+    files.to(LazyList).map(uploadFile(service, _)).collectFirst({ case e: Error => e })
+
+  private def failTheBuild(error: Error): Nothing = error match {
+    case Error(message, Some(exception)) => throw new MojoExecutionException(message, exception)
+    case Error(message, None) => throw new MojoExecutionException(message)
   }
 
   @throws[IOException]
@@ -144,4 +171,3 @@ class GCSUploader extends AbstractMojo {
     service.uploadFile(path, Option(m_BaseBucketPath), m_SharePublic)
 
 }
-
