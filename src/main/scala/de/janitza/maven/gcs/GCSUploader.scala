@@ -126,10 +126,8 @@ class GCSUploader extends AbstractMojo {
 
   private def findFilesToUpload: Seq[Path] = {
     val foundFiles = new collection.mutable.ArrayBuffer[Path]
-    Files.walkFileTree(
-      filesFilterBasePath,
-      new FileFinder(m_FilesFilter, getLog, path => foundFiles += path)
-    )
+    val root = filesFilterBasePath
+    Files.walkFileTree(root, new FileFinder(root, m_FilesFilter, getLog, path => foundFiles += path))
     foundFiles.toSeq
   }
 
