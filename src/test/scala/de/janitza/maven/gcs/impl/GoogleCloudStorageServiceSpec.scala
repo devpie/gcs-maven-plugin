@@ -11,6 +11,7 @@ import de.janitza.maven.gcs.testsupport.{GcsMockTransport, ProbeFileTypeDetector
 import org.apache.maven.plugin.logging.{Log, SystemStreamLog}
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.freespec.AnyFreeSpec
+import scala.compiletime.uninitialized
 
 /**
   * Exercises the real HTTP edge. GCSConfig carries the HttpTransport, so a test can
@@ -28,7 +29,7 @@ class GoogleCloudStorageServiceSpec extends AnyFreeSpec with BeforeAndAfterAll {
   private val MaxAttempts = GoogleCloudStorageService.MAX_ATTEMPTS
   private val KnownExtension = ProbeFileTypeDetector.KnownExtension
 
-  private var tempDir: Path = _
+  private var tempDir: Path = uninitialized
 
   override def beforeAll(): Unit = tempDir = TempFiles.directory("gcs-service-spec")
 

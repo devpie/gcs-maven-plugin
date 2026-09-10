@@ -6,6 +6,7 @@ import de.janitza.maven.gcs.api.{Error, Success}
 import de.janitza.maven.gcs.testsupport.{ProbeFileTypeDetector, TempFiles}
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.freespec.AnyFreeSpec
+import scala.compiletime.uninitialized
 
 /**
   * The mime type assertions do not depend on the operating system.
@@ -25,7 +26,7 @@ class HttpUtilSpec extends AnyFreeSpec with BeforeAndAfterAll {
   private val DetectorMissing =
     "The test detector is not installed. Are the tests running in their own JVM? See forkMode in the pom.xml."
 
-  private var tempDir: Path = _
+  private var tempDir: Path = uninitialized
 
   override def beforeAll(): Unit = tempDir = TempFiles.directory("gcs-httputil-spec")
 

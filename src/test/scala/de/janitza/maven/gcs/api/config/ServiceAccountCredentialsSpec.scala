@@ -9,6 +9,7 @@ import de.janitza.maven.gcs.testsupport.{TempFiles, TestKeys}
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.freespec.AnyFreeSpec
 import play.api.libs.json.{JsValue, Json}
+import scala.compiletime.uninitialized
 
 /**
   * The credentials path decides whether the plugin can authenticate at all, and it
@@ -21,7 +22,7 @@ class ServiceAccountCredentialsSpec extends AnyFreeSpec with BeforeAndAfterAll {
 
   private val AccountId = "test@example.iam.gserviceaccount.com"
 
-  private var tempDir: Path = _
+  private var tempDir: Path = uninitialized
 
 
   override def beforeAll(): Unit = tempDir = TempFiles.directory("gcs-credentials-spec")
@@ -62,7 +63,7 @@ class ServiceAccountCredentialsSpec extends AnyFreeSpec with BeforeAndAfterAll {
         "token_uri" -> "https://oauth2.googleapis.com/token"
       ))
 
-      assert(ServiceAccountCredentials.load(path).isInstanceOf[Success[_]])
+      assert(ServiceAccountCredentials.load(path).isInstanceOf[Success[?]])
     }
 
     "reports an Error naming the missing field when client_email is absent" in {

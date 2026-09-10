@@ -10,6 +10,7 @@ import org.apache.maven.plugin.{AbstractMojo, MojoExecutionException}
 import org.apache.maven.plugins.annotations.{LifecyclePhase, Mojo, Parameter}
 
 import scala.util.control.NonFatal
+import scala.compiletime.uninitialized
 
 /**
   * Goal which uploads files into a specified bucket of the Google Cloud Storage
@@ -26,7 +27,7 @@ class GCSUploader extends AbstractMojo {
     required = false,
     alias = "base-directory"
   )
-  private var m_BaseDir: File = _
+  private var m_BaseDir: File = uninitialized
 
   /**
     * Location of the file.
@@ -37,7 +38,7 @@ class GCSUploader extends AbstractMojo {
     required = true,
     alias = "gcs-application-name"
   )
-  private var m_ApplicationName: String = _
+  private var m_ApplicationName: String = uninitialized
 
   /**
     * A filter expression identifying the files to be uploaded.
@@ -48,7 +49,7 @@ class GCSUploader extends AbstractMojo {
     required = true,
     alias = "files-filter"
   )
-  private var m_FilesFilter: String = _
+  private var m_FilesFilter: String = uninitialized
 
   /**
     * A GCS bucket uri for uploading the files to.
@@ -59,7 +60,7 @@ class GCSUploader extends AbstractMojo {
     required = true,
     alias = "bucket-name"
   )
-  private var m_BucketName: String = _
+  private var m_BucketName: String = uninitialized
 
   /**
     * The GCS secrets file.
@@ -70,7 +71,7 @@ class GCSUploader extends AbstractMojo {
     required = true,
     alias = "json-secrets-file"
   )
-  private var m_JsonSecretsFile: String = _
+  private var m_JsonSecretsFile: String = uninitialized
 
   /**
     * If the files should be shared publicly.
@@ -92,7 +93,7 @@ class GCSUploader extends AbstractMojo {
     required = false,
     alias = "bucket-base-path"
   )
-  private var m_BaseBucketPath: String = _
+  private var m_BaseBucketPath: String = uninitialized
 
   /**
     * The root path for recursively applying the files filter to.
@@ -103,7 +104,7 @@ class GCSUploader extends AbstractMojo {
     required = false,
     alias = "files-filter-base-path"
   )
-  private var m_FilesFilterBasePath: String = _
+  private var m_FilesFilterBasePath: String = uninitialized
 
   @throws[MojoExecutionException]
   def execute(): Unit = {

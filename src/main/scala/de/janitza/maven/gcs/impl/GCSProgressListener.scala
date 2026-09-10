@@ -11,7 +11,7 @@ import com.google.api.client.googleapis.media.MediaHttpUploader.UploadState
 class GCSProgressListener(val m_FileSize: Long, val m_Log: Log) extends MediaHttpUploaderProgressListener {
 
   @throws[IOException]
-  override def progressChanged(uploader: MediaHttpUploader) {
+  override def progressChanged(uploader: MediaHttpUploader): Unit = {
     val percentage = Math.floor(uploader.getProgress * 100).round
     val numBytesUploaded = uploader.getNumBytesUploaded / 1024 / 1024
     val fileSizeInMB = m_FileSize / 1024 / 1024

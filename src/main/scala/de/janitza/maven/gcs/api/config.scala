@@ -14,7 +14,7 @@ import play.api.libs.json.{JsError, JsSuccess, JsValue, Json}
 
 import scala.util.control.NonFatal
 
-case class GCSConfig private(httpTransport: HttpTransport,
+case class GCSConfig(httpTransport: HttpTransport,
                              scopes: Seq[String],
                              serviceAccountCredentials: ServiceAccountCredentials,
                              jsonFactory: JsonFactory,

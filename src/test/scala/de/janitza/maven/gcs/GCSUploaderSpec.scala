@@ -12,6 +12,7 @@ import de.janitza.maven.gcs.testsupport.{GcsMockTransport, ProbeFileTypeDetector
 import org.apache.maven.plugin.logging.SystemStreamLog
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.freespec.AnyFreeSpec
+import scala.compiletime.uninitialized
 
 /**
   * Covers the two decisions the mojo makes around the upload itself: which directory it
@@ -27,7 +28,7 @@ class GCSUploaderSpec extends AnyFreeSpec with BeforeAndAfterAll {
   private val MaxAttempts = GoogleCloudStorageService.MAX_ATTEMPTS
   private val KnownExtension = ProbeFileTypeDetector.KnownExtension
 
-  private var tempDir: Path = _
+  private var tempDir: Path = uninitialized
 
   override def beforeAll(): Unit = tempDir = TempFiles.directory("gcs-uploader-spec")
 

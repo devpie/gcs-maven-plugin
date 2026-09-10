@@ -122,16 +122,16 @@ class GoogleCloudStorageService @throws[IOException]
     }
   }
 
-  private def logBucketInfo(bucketName: String, bucket: Bucket) {
+  private def logBucketInfo(bucketName: String, bucket: Bucket): Unit = {
     log.info(s"Bucket name: $bucketName")
     log.info(s"Bucket location: ${bucket.getLocation}")
   }
 
-  private def logFileUploaded(file: Path, storagePath: String, t1: Instant) {
+  private def logFileUploaded(file: Path, storagePath: String, t1: Instant): Unit = {
     log.info(s"Uploaded $file to $storagePath in ${Duration.between(t1, Instant.now)}")
   }
 
-  private def logFileUploading(file: Path, storagePath: String) {
+  private def logFileUploading(file: Path, storagePath: String): Unit = {
     log.info(s"Uploading $file to $storagePath")
   }
 

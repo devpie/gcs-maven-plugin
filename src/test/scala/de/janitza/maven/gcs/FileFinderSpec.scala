@@ -8,6 +8,7 @@ import org.scalatest.BeforeAndAfterEach
 import org.scalatest.freespec.AnyFreeSpec
 
 import scala.collection.mutable
+import scala.compiletime.uninitialized
 
 /**
   * FileFinder decides which files the plugin uploads, so anything it silently
@@ -15,7 +16,7 @@ import scala.collection.mutable
   */
 class FileFinderSpec extends AnyFreeSpec with BeforeAndAfterEach {
 
-  private var root: Path = _
+  private var root: Path = uninitialized
 
   override def beforeEach(): Unit = root = TempFiles.directory("gcs-filefinder-spec")
 

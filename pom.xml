@@ -22,8 +22,8 @@
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.release>17</maven.compiler.release>
-        <scala.feature.version>2.13</scala.feature.version>
-        <scala.version>${scala.feature.version}.18</scala.version>
+        <scala.feature.version>3</scala.feature.version>
+        <scala.version>3.9.0</scala.version>
         <maven.version>3.9.16</maven.version>
         <maven.plugin-tools.version>3.16.0</maven.plugin-tools.version>
         <google.api-client.version>2.9.1</google.api-client.version>
@@ -54,7 +54,7 @@
     <dependencies>
         <dependency>
             <groupId>org.scala-lang</groupId>
-            <artifactId>scala-library</artifactId>
+            <artifactId>scala3-library_3</artifactId>
             <version>${scala.version}</version>
         </dependency>
         <dependency>
