@@ -14,7 +14,7 @@ import de.janitza.maven.gcs.api.{Error, IGoogleCloudStorageService, Result, Succ
 import de.janitza.maven.gcs.impl.util.{HttpUtil, StoragePath}
 import org.apache.maven.plugin.logging.Log
 
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 
 
 object GoogleCloudStorageService {
@@ -87,7 +87,7 @@ class GoogleCloudStorageService @throws[IOException]
   }
 
   private def insertWithRetry(file: Path, storageObject: StorageObject, maxRetryCount: Int): Result[Unit] = {
-    val errorResults = Stream.from(1).take(maxRetryCount)
+    val errorResults = LazyList.from(1).take(maxRetryCount)
       .map(Insertion(file, storageObject).execute)
       .takeWhile(result => result.isInstanceOf[Error]).toSeq
     if (errorResults.nonEmpty && errorResults.size < maxRetryCount) {
@@ -165,7 +165,7 @@ class GoogleCloudStorageService @throws[IOException]
   }
 
   private def addPublicReadAccess(defaultAcl: Seq[ObjectAccessControl]): Seq[ObjectAccessControl] = {
-    val alreadyShared = defaultAcl.toStream.map(_.getEntity).exists(USER_ALL_USERS.equals(_))
+    val alreadyShared = defaultAcl.to(LazyList).map(_.getEntity).exists(USER_ALL_USERS.equals(_))
     if (alreadyShared)
       defaultAcl
     else

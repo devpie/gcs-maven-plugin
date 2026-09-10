@@ -21,9 +21,35 @@
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <scala.feature.version>2.12</scala.feature.version>
-        <scala.version>${scala.feature.version}.1</scala.version>
+        <maven.compiler.release>17</maven.compiler.release>
+        <scala.feature.version>2.13</scala.feature.version>
+        <scala.version>${scala.feature.version}.18</scala.version>
+        <maven.version>3.9.16</maven.version>
+        <maven.plugin-tools.version>3.16.0</maven.plugin-tools.version>
+        <google.api-client.version>2.9.1</google.api-client.version>
+        <google.http-client.version>2.2.0</google.http-client.version>
+        <jackson.version>2.22.2</jackson.version>
     </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <!-- play-json und google-http-client-jackson2 bringen verschiedene Jackson-Versionen mit -->
+            <dependency>
+                <groupId>com.fasterxml.jackson</groupId>
+                <artifactId>jackson-bom</artifactId>
+                <version>${jackson.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>com.google.http-client</groupId>
+                <artifactId>google-http-client-bom</artifactId>
+                <version>${google.http-client.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 
     <dependencies>
         <dependency>
@@ -32,52 +58,41 @@
             <version>${scala.version}</version>
         </dependency>
         <dependency>
-            <groupId>com.typesafe.play</groupId>
+            <groupId>org.playframework</groupId>
             <artifactId>play-json_${scala.feature.version}</artifactId>
-            <version>2.6.0-M5</version>
+            <version>3.0.6</version>
         </dependency>
         <dependency>
             <groupId>org.scalatest</groupId>
             <artifactId>scalatest_${scala.feature.version}</artifactId>
-            <version>3.0.1</version>
+            <version>3.2.20</version>
             <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>org.apache.maven</groupId>
             <artifactId>maven-plugin-api</artifactId>
-            <version>3.1.1</version>
+            <version>${maven.version}</version>
+            <scope>provided</scope>
         </dependency>
         <dependency>
             <groupId>org.apache.maven.plugin-tools</groupId>
             <artifactId>maven-plugin-annotations</artifactId>
-            <version>3.3</version>
+            <version>${maven.plugin-tools.version}</version>
             <scope>provided</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.codehaus.plexus</groupId>
-            <artifactId>plexus-utils</artifactId>
-            <version>3.0.9</version>
-        </dependency>
-        <dependency>
-            <groupId>junit</groupId>
-            <artifactId>junit</artifactId>
-            <version>4.12</version>
-            <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>com.google.apis</groupId>
             <artifactId>google-api-services-storage</artifactId>
-            <version>v1-rev98-1.22.0</version>
+            <version>v1-rev20260821-2.0.0</version>
+        </dependency>
+        <dependency>
+            <groupId>com.google.api-client</groupId>
+            <artifactId>google-api-client</artifactId>
+            <version>${google.api-client.version}</version>
         </dependency>
         <dependency>
             <groupId>com.google.http-client</groupId>
             <artifactId>google-http-client-jackson2</artifactId>
-            <version>1.22.0</version>
-        </dependency>
-        <dependency>
-            <groupId>com.google.oauth-client</groupId>
-            <artifactId>google-oauth-client-jetty</artifactId>
-            <version>1.22.0</version>
         </dependency>
     </dependencies>
 
@@ -86,7 +101,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-plugin-plugin</artifactId>
-                <version>3.3</version>
+                <version>${maven.plugin-tools.version}</version>
                 <configuration>
                     <goalPrefix>gcs</goalPrefix>
                     <skipErrorNoDescriptorsFound>true</skipErrorNoDescriptorsFound>
@@ -109,21 +124,27 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.5</version>
-                <configuration>
-                    <source>1.8</source>
-                    <target>1.8</target>
-                </configuration>
+                <version>3.16.0</version>
             </plugin>
             <plugin>
-                <groupId>org.scala-tools</groupId>
-                <artifactId>maven-scala-plugin</artifactId>
-                <version>2.15.2</version>
+                <groupId>net.alchim31.maven</groupId>
+                <artifactId>scala-maven-plugin</artifactId>
+                <version>4.9.10</version>
+                <configuration>
+                    <scalaVersion>${scala.version}</scalaVersion>
+                    <args>
+                        <arg>-release</arg>
+                        <arg>${maven.compiler.release}</arg>
+                        <arg>-deprecation</arg>
+                        <arg>-feature</arg>
+                    </args>
+                </configuration>
                 <executions>
                     <execution>
                         <id>scala-compile-first</id>
                         <phase>process-sources</phase>
                         <goals>
+                            <goal>add-source</goal>
                             <goal>compile</goal>
                         </goals>
                     </execution>
@@ -140,7 +161,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
-                <version>2.7</version>
+                <version>3.6.0</version>
                 <configuration>
                     <skipTests>true</skipTests>
                 </configuration>
@@ -149,8 +170,13 @@
             <plugin>
                 <groupId>org.scalatest</groupId>
                 <artifactId>scalatest-maven-plugin</artifactId>
-                <version>1.0</version>
+                <version>2.2.0</version>
                 <configuration>
+                    <!-- Already this plugin's default; pinned so that -DforkMode=never cannot be
+                         passed in. Files.probeContentType resolves its ServiceLoader against the
+                         system class loader, which sees target/test-classes only in a forked JVM,
+                         and without it the test-only FileTypeDetector goes missing. -->
+                    <forkMode>once</forkMode>
                     <reportsDirectory>${project.build.directory}/surefire-reports</reportsDirectory>
                     <junitxml>.</junitxml>
                     <filereports>TestSuite.txt</filereports>
@@ -175,7 +201,7 @@
                     <plugin>
                         <groupId>org.apache.maven.plugins</groupId>
                         <artifactId>maven-invoker-plugin</artifactId>
-                        <version>1.7</version>
+                        <version>3.10.1</version>
                         <configuration>
                             <debug>true</debug>
                             <cloneProjectsTo>${project.build.directory}/it

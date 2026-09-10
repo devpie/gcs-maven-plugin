@@ -114,7 +114,7 @@ class GCSUploader extends AbstractMojo {
 
       val result: Option[Result[Unit]] = getGoogleCloudStorageService match {
         case Success(service) =>
-          pomFiles.toStream.map(uploadFile(service, _)).collectFirst({ case e: Error => e })
+          pomFiles.to(LazyList).map(uploadFile(service, _)).collectFirst({ case e: Error => e })
         case e: Error => Some(e)
       }
 
