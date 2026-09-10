@@ -1,0 +1,68 @@
+name: build
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+  workflow_dispatch:
+
+# Naming a single permission sets every other one to none.
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7
+        with:
+          # This build pushes nothing. Without the flag the action leaves GITHUB_TOKEN
+          # in .git/config, where the Maven run and its plugins could read it.
+          persist-credentials: false
+
+      - name: Set up JDK 17 and cache ~/.m2/repository
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      # Maven comes from the runner image, not from setup-java, so nothing else in the
+      # log says which version ran.
+      - name: Report tool versions
+        run: mvn --version
+
+      # package, not verify: the run-its profile uploads real files to Google Cloud
+      # Storage. It needs -Prun-its to activate, which this workflow never passes, and
+      # its executions bind to install, integration-test and verify — all after package.
+      # No -DforkMode and no -DskipTests either: forkMode once from the pom must stay in
+      # effect, or HttpUtilSpec loses its FileTypeDetector.
+      - name: Build and test
+        run: mvn --batch-mode package
+
+      # scalatest-maven-plugin writes its JUnit XML to target/surefire-reports.
+      # !cancelled() rather than always(): upload on green and red runs, but not when
+      # cancel-in-progress aborts one.
+      - name: Upload test reports
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-reports
+          path: target/surefire-reports/
+          retention-days: 7
+
+      - name: Upload plugin jar
+        uses: actions/upload-artifact@v7
+        with:
+          name: gcs-maven-plugin-jar
+          path: target/gcs-maven-plugin-*.jar
+          if-no-files-found: error
+          retention-days: 7
