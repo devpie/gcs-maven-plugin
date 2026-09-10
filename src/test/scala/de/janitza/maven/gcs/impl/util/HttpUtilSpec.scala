@@ -60,6 +60,11 @@ class HttpUtilSpec extends AnyFreeSpec with BeforeAndAfterAll {
     // checksum file, so the type falls back instead of failing.
     // The expected value is spelled out rather than read from HttpUtil, because it is
     // the contract towards Google Cloud Storage, not an internal detail.
+    "falls back to application/octet-stream when no detector recognises the file" in {
+      val file = TempFiles.fileAt(tempDir, s"anything${ProbeFileTypeDetector.UnknownExtension}")
+
+      assert(HttpUtil.getMimeType(file) == Success("application/octet-stream"))
+    }
   }
 
   "getContentDisposition" - {
@@ -74,12 +79,22 @@ class HttpUtilSpec extends AnyFreeSpec with BeforeAndAfterAll {
 
     // RFC 6266 puts the file name into a quoted-string, where " has to be escaped.
     // Unescaped it would end the header value early and leave the rest as garbage.
+    "escapes a quote in the file name" in {
+      assert(HttpUtil.getContentDisposition("he\"llo.txt") == "attachment; filename=\"he\\\"llo.txt\"")
+    }
 
     // The only case that tells the two escaping orders apart. Escaping \ first gives
     // \\ \" — three backslashes and a quote; escaping " first would escape the
     // backslash of that escape a second time and produce four.
+    "escapes a backslash before the quote it precedes" in {
+      assert(HttpUtil.getContentDisposition("a\\\"b.txt") == "attachment; filename=\"a\\\\\\\"b.txt\"")
+    }
 
     // A line break cannot be escaped into a quoted-string; carried through it would end
     // the header and let the file name append a header of its own. Dropping it is the
+    // smallest change that makes that impossible without inventing characters.
+    "drops a line break from the file name" in {
+      assert(HttpUtil.getContentDisposition("line\r\nbreak.txt") == """attachment; filename="linebreak.txt"""")
+    }
   }
 }

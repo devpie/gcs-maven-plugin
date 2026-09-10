@@ -185,6 +185,24 @@ class GoogleCloudStorageServiceSpec extends AnyFreeSpec with BeforeAndAfterAll {
     }
   }
 
+  // The plugin used to leave contentType out of this request altogether: HttpUtil wrapped
+  // the null from Files.probeContentType in a Success and setContentType(null) dropped the
+  // field. With a fixed fallback the case is testable on every machine — .gcsunknown is
+  // claimed by no detector on the test classpath, and neither supported platform sniffs
+  // the content for it.
+  "a file whose extension no detector knows" - {
+
+    "is uploaded as application/octet-stream" in {
+      val (transport, service) = serviceAgainst()
+
+      service.uploadFile(uploadable(s"mystery${ProbeFileTypeDetector.UnknownExtension}"), None, sharePublic = false)
+
+      val body = transport.initiationRequests.head.body
+      withClue(body) {
+        assert(body.contains(""""contentType":"application/octet-stream""""))
+      }
+    }
+  }
 
   /** Keeps what the service logged, so a test can assert that no success was announced. */
   private class RecordingLog extends SystemStreamLog {
