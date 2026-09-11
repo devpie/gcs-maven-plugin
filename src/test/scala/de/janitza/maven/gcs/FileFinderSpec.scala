@@ -2,7 +2,7 @@ package de.janitza.maven.gcs
 
 import java.nio.file.{Files, Path}
 
-import de.janitza.maven.gcs.testsupport.TempFiles
+import de.janitza.maven.gcs.testsupport.{Permissions, TempFiles}
 import org.apache.maven.plugin.logging.SystemStreamLog
 import org.scalatest.BeforeAndAfterEach
 import org.scalatest.freespec.AnyFreeSpec
@@ -125,6 +125,25 @@ class FileFinderSpec extends AnyFreeSpec with BeforeAndAfterEach {
       Files.createSymbolicLink(link, root.resolve("real"))
 
       assert(!matchesOf("*.jar").contains(link))
+    }
+  }
+
+  "an entry the walk cannot read" - {
+
+    // Without this the scan loses files without saying so and the deploy reports success
+    // for an upload that is missing whatever sat below the unreadable directory.
+    "is kept, so the caller learns the scan was incomplete" in {
+      val readable = TempFiles.fileAt(root, "readable/app.jar")
+      val unreadableDirectory = TempFiles.fileAt(root, "secret/hidden.jar").getParent
+
+      Permissions.withoutAnyAccessTo(unreadableDirectory) {
+        val found = mutable.Buffer.empty[Path]
+        val finder = new FileFinder(root, "*.jar", new SystemStreamLog, found += _)
+        Files.walkFileTree(root, finder)
+
+        assert(finder.unreadablePaths == Seq(unreadableDirectory))
+        assert(found.toSeq == Seq(readable))
+      }
     }
   }
 

@@ -6,21 +6,25 @@ import java.nio.file.{Path, Paths}
 import com.google.api.client.json.jackson2.JacksonFactory
 import com.google.api.client.testing.http.MockLowLevelHttpResponse
 import de.janitza.maven.gcs.api.config.{GCSConfig, ServiceAccountCredentials}
+import de.janitza.maven.gcs.api.{Error, Success}
 import de.janitza.maven.gcs.impl.GoogleCloudStorageService
 import de.janitza.maven.gcs.testsupport.GcsMockTransport.{ownerAclEntry, serviceUnavailable}
-import de.janitza.maven.gcs.testsupport.{GcsMockTransport, ProbeFileTypeDetector, TempFiles, TestKeys}
+import de.janitza.maven.gcs.testsupport.{GcsMockTransport, Permissions, ProbeFileTypeDetector, TempFiles, TestKeys}
+import org.apache.maven.plugin.MojoExecutionException
 import org.apache.maven.plugin.logging.SystemStreamLog
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.freespec.AnyFreeSpec
 import scala.compiletime.uninitialized
 
 /**
-  * Covers the two decisions the mojo makes around the upload itself: which directory it
-  * scans, and what happens to the remaining files once one of them fails.
+  * Covers the decisions the mojo makes around the upload itself: which directory it scans,
+  * what it does when the scan cannot read part of that directory, and what happens to the
+  * remaining files once an upload fails.
   *
-  * The mojo builds its own storage service from a secrets file, so execute() is out of
-  * reach here. Both decisions live in methods that take what they need as an argument,
-  * which is what makes them testable against the recording transport.
+  * The mojo builds its own storage service from a secrets file, so execute() is only
+  * reachable for a run that ends before the service is built. The other decisions live in
+  * methods that take what they need as an argument, which is what makes them testable
+  * against the recording transport.
   */
 class GCSUploaderSpec extends AnyFreeSpec with BeforeAndAfterAll {
 
@@ -48,10 +52,11 @@ class GCSUploaderSpec extends AnyFreeSpec with BeforeAndAfterAll {
   }
 
   /** Maven injects the mojo parameters into the fields, so a test sets them the same way. */
-  private def uploaderWith(baseDir: File, filesFilterBasePath: String): GCSUploader = {
+  private def uploaderWith(baseDir: File, filesFilterBasePath: String, filesFilter: String = "*.jar"): GCSUploader = {
     val uploader = new GCSUploader
     setParameter(uploader, "m_BaseDir", baseDir)
     setParameter(uploader, "m_FilesFilterBasePath", filesFilterBasePath)
+    setParameter(uploader, "m_FilesFilter", filesFilter)
     uploader
   }
 
@@ -77,6 +82,64 @@ class GCSUploaderSpec extends AnyFreeSpec with BeforeAndAfterAll {
       assert(transport.initiationRequests.size == MaxAttempts)
       assert(transport.initiationRequests.forall(_.body.contains(rejected.getFileName.toString)))
     }
+  }
+
+  "a directory the scan cannot read" - {
+
+    // The scan silently dropped whatever sat below such a directory, so the plugin
+    // uploaded an incomplete set of files and still reported the deploy as successful.
+    "ends the run before a single file is uploaded" in {
+      withUnreadableDirectoryBelow { (scanRoot, unreadableDirectory) =>
+        val uploader = uploaderWith(baseDir = scanRoot.toFile, filesFilterBasePath = null)
+
+        val result = uploader.findFilesToUpload
+
+        assert(result == Error(
+          s"The scan could not read 1 entry, so the files to upload are unknown: $unreadableDirectory"))
+      }
+    }
+
+    // A tree can go wrong in many places at once. Naming every single one would bury the
+    // number of them, and that number is what tells the user how big the problem is.
+    "is counted in full, but only the first ten are named" in {
+      val scanRoot = TempFiles.directory("gcs-uploader-spec-many-unreadable")
+      try {
+        val unreadableDirectories =
+          (0 until 12).map(index => TempFiles.fileAt(scanRoot, f"secret-$index%02d/hidden.jar").getParent)
+
+        Permissions.withoutAnyAccessTo(unreadableDirectories) {
+          val uploader = uploaderWith(baseDir = scanRoot.toFile, filesFilterBasePath = null)
+
+          val Error(message, _) = uploader.findFilesToUpload: @unchecked
+
+          assert(message.startsWith("The scan could not read 12 entries,"))
+          assert(message.endsWith(", and 2 more"))
+          assert(unreadableDirectories.count(directory => message.contains(directory.toString)) == 10)
+        }
+      } finally TempFiles.deleteRecursively(scanRoot)
+    }
+
+    "names the directory in the message that fails the build" in {
+      withUnreadableDirectoryBelow { (scanRoot, unreadableDirectory) =>
+        val uploader = uploaderWith(baseDir = scanRoot.toFile, filesFilterBasePath = null)
+
+        val failure = intercept[MojoExecutionException](uploader.execute())
+
+        assert(failure.getMessage.contains(unreadableDirectory.toString))
+      }
+    }
+  }
+
+  /**
+    * Builds a tree of its own for each test, because the unreadable directory has to be
+    * deleted again and the suite shares tempDir across all tests.
+    */
+  private def withUnreadableDirectoryBelow(body: (Path, Path) => Unit): Unit = {
+    val scanRoot = TempFiles.directory("gcs-uploader-spec-unreadable")
+    try {
+      val unreadableDirectory = TempFiles.fileAt(scanRoot, "secret/hidden.jar").getParent
+      Permissions.withoutAnyAccessTo(unreadableDirectory)(body(scanRoot, unreadableDirectory))
+    } finally TempFiles.deleteRecursively(scanRoot)
   }
 
   "the directory the files filter is applied to" - {

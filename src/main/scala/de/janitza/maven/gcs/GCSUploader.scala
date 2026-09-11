@@ -18,6 +18,9 @@ import scala.compiletime.uninitialized
 @Mojo(name = "upload", defaultPhase = LifecyclePhase.DEPLOY)
 class GCSUploader extends AbstractMojo {
 
+  /** How many unreadable entries the error message names before it only counts the rest. */
+  private val MaxNamedPaths = 10
+
   /**
     * Location of the build directory.
     */
@@ -110,9 +113,12 @@ class GCSUploader extends AbstractMojo {
   def execute(): Unit = {
     val failure: Option[Error] =
       try {
-        val filesToUpload = findFilesToUpload
-        getGoogleCloudStorageService match {
-          case Success(service) => uploadUntilFirstError(service, filesToUpload)
+        findFilesToUpload match {
+          case Success(filesToUpload) =>
+            getGoogleCloudStorageService match {
+              case Success(service) => uploadUntilFirstError(service, filesToUpload)
+              case e: Error => Some(e)
+            }
           case e: Error => Some(e)
         }
       } catch {
@@ -125,11 +131,31 @@ class GCSUploader extends AbstractMojo {
     failure.foreach(failTheBuild)
   }
 
-  private def findFilesToUpload: Seq[Path] = {
+  /**
+    * Scans for the files to upload and reports an error when the scan could not read
+    * everything. The upload never starts then: below an unreadable directory nobody knows
+    * which files are missing, and a half filled bucket is harder to spot than an empty one.
+    */
+  private[gcs] def findFilesToUpload: Result[Seq[Path]] = {
     val foundFiles = new collection.mutable.ArrayBuffer[Path]
     val root = filesFilterBasePath
-    Files.walkFileTree(root, new FileFinder(root, m_FilesFilter, getLog, path => foundFiles += path))
-    foundFiles.toSeq
+    val fileFinder = new FileFinder(root, m_FilesFilter, getLog, path => foundFiles += path)
+    Files.walkFileTree(root, fileFinder)
+    val unreadablePaths = fileFinder.unreadablePaths
+    if (unreadablePaths.isEmpty) Success(foundFiles.toSeq) else Error(scanFailedMessage(unreadablePaths))
+  }
+
+  /**
+    * Names the entries the scan could not read, because the user has to know where to fix
+    * the permissions. The count comes first: with hundreds of unreadable entries the list
+    * is cut off, and the number is the part that still has to arrive.
+    */
+  private def scanFailedMessage(unreadablePaths: Seq[Path]): String = {
+    val entries = if (unreadablePaths.size == 1) "1 entry" else s"${unreadablePaths.size} entries"
+    val namedPaths = unreadablePaths.sortBy(_.toString).take(MaxNamedPaths).mkString(", ")
+    val unnamedPaths = unreadablePaths.size - MaxNamedPaths
+    val andMore = if (unnamedPaths > 0) s", and $unnamedPaths more" else ""
+    s"The scan could not read $entries, so the files to upload are unknown: $namedPaths$andMore"
   }
 
   /**

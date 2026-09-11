@@ -7,7 +7,9 @@ import java.nio.file.attribute.BasicFileAttributes
 import org.apache.maven.plugin.logging.Log
 
 /**
-  * Collects the regular files below `rootDirectory` that match `globPattern`.
+  * Collects the regular files below `rootDirectory` that match `globPattern` and remembers
+  * every entry it could not read, so the caller can tell a complete scan from an
+  * incomplete one.
   *
   * Created by jan on 11.03.17.
   */
@@ -20,6 +22,8 @@ class FileFinder(
 
   /** java.nio glob patterns always use "/", whatever the platform separator is. */
   private val GlobPathSeparator = "/"
+
+  private val m_unreadablePaths = collection.mutable.ArrayBuffer.empty[Path]
 
   private val m_pathMatcher = FileSystems.getDefault.getPathMatcher("glob:" + globPattern)
 
@@ -46,8 +50,20 @@ class FileFinder(
     FileVisitResult.CONTINUE
   }
 
+  /**
+    * The entries the walk could not read, in the order it hit them. Empty until the walk
+    * has run. A caller that ignores them works on an incomplete list of files.
+    */
+  def unreadablePaths: Seq[Path] = m_unreadablePaths.toSeq
+
+  /**
+    * The walk goes on, so one unreadable directory does not hide the rest of the tree from
+    * the caller. Remembering the path is what lets the caller decide what to do with it;
+    * the log line alone is easy to miss in a build log.
+    */
   override def visitFileFailed(file: Path, exc: IOException): FileVisitResult = {
     m_log.error(exc)
+    m_unreadablePaths += file
     FileVisitResult.CONTINUE
   }
 }
